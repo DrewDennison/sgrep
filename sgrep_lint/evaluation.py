@@ -166,52 +166,99 @@ def _where_python_statement_matches(
 
 
 def evaluate_expression(
-    expression, results: Dict[PatternId, List[SgrepRange]], **flags
+    expression: BooleanRuleExpression, results: Dict[PatternId, List[SgrepRange]], **flags
 ) -> Set[Range]:
     ranges_left = set([x.range for x in flatten(results.values())])
+    base_expression = BooleanRuleExpression(OPERATORS.AND_ALL, )
     return _evaluate_expression(expression, results, ranges_left, **flags)
+
+def possible_assumptions(ranges: List[SgrepRange]):
+    for r in ranges:
+        yield r.metavars
+
+def filter_ranges_for_metavar_binding(results: Dict[PatternId, List[SgrepRange]], binding: Dict[str, str]):
+    output = {}
+    for pattern_id, ranges in results.items():
+        output_ranges = []
+        for range in ranges:
+            for k, v in binding.items():
+                bound_value = range.metavars.get(k)
+                if bound_value is None or bound_value == v:
+                    output_ranges.append(range)
+        output[pattern_id] = output_ranges
+    return output
+
+def assume_metavariables(
+    expression: BooleanRuleExpression,
+    results: Dict[PatternId, List[SgrepRange]],
+    ranges_left: Set[Range],
+    **flags):
+    output = set()
+
+    for assumption_binding in possible_assumptions(results.get(expression.pattern_id, [SgrepRange(Range(0,0), {})])):
+        # remove all ranges where this metavar is defined and not equal to the bound value
+        print(f"assuming binding: {assumption_binding}")
+        results_under_assumption = filter_ranges_for_metavar_binding(results, assumption_binding)
+        ranges_left = set([x.range for x in flatten(results_under_assumption.values())])
+        yield (results_under_assumption, ranges_left)
+        print(f"result of assuming binding: {assumption_binding} is {results_under_assumption}")
+    return output
 
 
 def _evaluate_expression(
     expressions: List[BooleanRuleExpression],
-    results: Dict[PatternId, List[SgrepRange]],
-    ranges_left: Set[Range],
+    _results: Dict[PatternId, List[SgrepRange]],
+    _ranges_left: Set[Range],
     **flags,
 ) -> Set[Range]:
+
+    
+
+    def assume_evaluate ...(existing_assumptions)
+
+    make new assumptions for (expressions[0]) + existing_assumptions
+    for assumption in assumptions:
+        result = (expressions[0], assumptions)
+        assume_evaluate
+
     for expression in expressions:
-        if (
-            expression.operator == OPERATORS.AND_EITHER
-            or expression.operator == OPERATORS.AND_ALL
-        ):
-            assert (
-                expression.children is not None
-            ), f"{pattern_name_for_operator(OPERATORS.AND_EITHER)} or {pattern_name_for_operator(OPERATORS.AND_ALL)} must have a list of subpatterns"
+        unified_assumption_output = set()
+        for (bound_results, bound_ranges_left) in assume_metavariables(expression, _results, _ranges_left):
+            
+            if (
+                expression.operator == OPERATORS.AND_EITHER
+                or expression.operator == OPERATORS.AND_ALL
+            ):
+                assert (
+                    expression.children is not None
+                ), f"{pattern_name_for_operator(OPERATORS.AND_EITHER)} or {pattern_name_for_operator(OPERATORS.AND_ALL)} must have a list of subpatterns"
 
-            # recurse on the nested expressions
-            evaluated_ranges = [
-                _evaluate_expression([expr], results, ranges_left.copy())
-                for expr in expression.children
-            ]
-            debug_print(
-                f"recursion result {evaluated_ranges} (flat: {list(flatten(evaluated_ranges))}))"
-            )
+                # recurse on the nested expressions
+                evaluated_ranges = [
+                    _evaluate_expression([expr], bound_results, bound_ranges_left.copy())
+                    for expr in expression.children
+                ]
+                debug_print(
+                    f"recursion result {evaluated_ranges} (flat: {list(flatten(evaluated_ranges))}))"
+                )
 
-            if expression.operator == OPERATORS.AND_EITHER:
-                # remove anything that does not equal one of these ranges
-                ranges_left.intersection_update(flatten(evaluated_ranges))
-            elif expression.operator == OPERATORS.AND_ALL:
-                # chain intersection of every range returned
-                for arange in evaluated_ranges:
-                    ranges_left.intersection_update(arange)
-            debug_print(f"after filter `{expression.operator}`: {ranges_left}")
-        else:
-            assert (
-                expression.children is None
-            ), f"only `{pattern_name_for_operator(OPERATORS.AND_EITHER)}` or `{pattern_name_for_operator(OPERATORS.AND_ALL)}` expressions can have multiple subpatterns"
-            ranges_left = _evaluate_single_expression(
-                expression, results, ranges_left, **flags
-            )
-    return ranges_left
+                if expression.operator == OPERATORS.AND_EITHER:
+                    # remove anything that does not equal one of these ranges
+                    bound_ranges_left.intersection_update(flatten(evaluated_ranges))
+                elif expression.operator == OPERATORS.AND_ALL:
+                    # chain intersection of every range returned
+                    for arange in evaluated_ranges:
+                        bound_ranges_left.intersection_update(arange)
+                debug_print(f"after filter `{expression.operator}`: {bound_ranges_left}")
+            else:
+                assert (
+                    expression.children is None
+                ), f"only `{pattern_name_for_operator(OPERATORS.AND_EITHER)}` or `{pattern_name_for_operator(OPERATORS.AND_ALL)}` expressions can have multiple subpatterns"
+                bound_ranges_left = _evaluate_single_expression(
+                    expression, bound_results, bound_ranges_left, **flags
+                )
+        unified_assumption_output.update(bound_ranges_left)
+    return unified_assumption_output
 
 
 def enumerate_patterns_in_boolean_expression(
@@ -228,3 +275,4 @@ def enumerate_patterns_in_boolean_expression(
             yield from enumerate_patterns_in_boolean_expression(expr.children)
         else:
             yield expr
+    

@@ -341,7 +341,7 @@ def test_exprs():
     assert flat == expected, f"flat: {flat}"
 
 
-def testEvaluatePython():
+def test_evaluate_python():
     """Test evaluating the subpattern `where-python: <python_expression>`,
     in which a rule can provide an arbitrary Python expression that will be
     evaluated against the currently matched metavariables.
@@ -393,3 +393,90 @@ def testEvaluatePython():
 
     result = evaluate_expression(expression, results)
     assert result == set([Range(400, 500)]), f"{result}"
+
+
+def test_metavar_equality():
+    """
+        Make sure that the evaluation engine enforces that the 
+        same metavariable is matched across multiple patterns
+
+        let p1 = def $X(...): ...
+        let p2 = $X = 1
+
+        000-100   def foo():
+        100-200      foo = 1
+        200-300   def bar():
+        300-400      foo = 1
+        400-500   def xyz():
+        500-600      xyz = 1
+
+        patterns:
+            pattern-inside: p1
+            pattern: p2
+
+    
+        OUTPUT: [100-200, 500-600]
+        """
+    results = {
+        "p1": [
+            SgrepRange(Range(0, 200),   {"$X": "foo"}),
+            SgrepRange(Range(200, 400), {"$X": "bar"}),
+            SgrepRange(Range(400, 600), {"$X": "xyz"}),
+        ],
+        "p2": [
+            SgrepRange(Range(100, 200), {"$X": "foo"}),
+            SgrepRange(Range(300, 400), {"$X": "foo"}),
+            SgrepRange(Range(500, 600), {"$X": "xyz"}),
+        ]
+    }
+
+    expression = [
+        RuleExpr(OPERATORS.AND_INSIDE, "p1", None),
+        RuleExpr(OPERATORS.AND, "p2", None),
+    ]
+
+    result = evaluate_expression(expression, results)
+    assert result == set([Range(100, 200), Range(500,600)]), f"{result}"    
+
+
+
+# def test_metavar_separated():
+#     """
+#         Make sure that the evaluation engine enforces that the 
+#         same metavariable is matched across multiple patterns
+
+#         let p1 = $X = 1 + $Y
+#         let p2 = $X += 1
+
+#         000-100   a = 1 + b
+#         100-200   a += 1
+#         200-300   z += 1
+#         300-400   c = 1 + b
+#         400-500   c += 1
+
+#         patterns:
+#             pattern: p1
+#             pattern: p2
+
+    
+#         OUTPUT: [100-200, 500-600]
+#         """
+#     results = {
+#         "p1": [
+#             SgrepRange(Range(0, 100),   {"$X": "a", "$Y": "b"}),
+#             SgrepRange(Range(300, 400), {"$X": "c", "$Y": "b"}),
+#         ],
+#         "p2": [
+#             SgrepRange(Range(100, 200), {"$X": "a"}),
+#             SgrepRange(Range(200, 300), {"$X": "z"}),
+#             SgrepRange(Range(400, 500), {"$X": "c"}),
+#         ]
+#     }
+
+#     expression = [
+#         RuleExpr(OPERATORS.AND_INSIDE, "p1", None),
+#         RuleExpr(OPERATORS.AND, "p2", None),
+#     ]
+
+#     result = evaluate_expression(expression, results)
+#     assert result == set([Range(100, 200), Range(500,600)]), f"{result}"    
