@@ -1,0 +1,16 @@
+name: sgrep
+
+on:
+  push:
+
+jobs:
+  sgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: sgrep
+        id: sgrep
+        uses: returntocorp/sgrep-action@develop
+        with:
+          config: r2c
+          output: https://sgrep.r2c.dev/api/report/${{ github.repository }}
